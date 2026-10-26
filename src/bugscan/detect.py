@@ -1,5 +1,6 @@
 """Look at a folder and work out what it is: languages, lockfiles, build systems, git, fuzz harness."""
 import os
+import subprocess
 from collections import Counter
 
 from . import paths
@@ -22,27 +23,53 @@ LOCKFILES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "Pipfile.lock",
              "pom.xml", "gradle.lockfile", "mix.lock", "pubspec.lock", "packages.lock.json"}
 
 
+def _skip_dir(name):
+    return name in SKIP_DIRS or name.startswith(".build") or name.endswith((".xcassets", ".xcodeproj", ".xcworkspace"))
+
+
+def skipped(rel, exclude=()):
+    """True if a relative path lies in a folder bugscan skips (dependencies, build output, `exclude`)."""
+    parts = rel.split("/")
+    return any(_skip_dir(p) for p in parts[:-1]) or any(rel == e or rel.startswith(e + "/") for e in exclude)
+
+
+def git_files(target):
+    """Files git would track here (committed, staged or new, minus .gitignore'd), or None outside a repo."""
+    r = subprocess.run(["git", "-C", target, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                       capture_output=True)
+    if r.returncode != 0:
+        return None
+    files = set()
+    for f in r.stdout.decode("utf-8", "replace").split("\0"):
+        if f.endswith("/") and os.path.exists(os.path.join(target, f, ".git")):  # a nested repository
+            files |= {f + sub for sub in git_files(os.path.join(target, f)) or []}
+        elif f:
+            files.add(f)
+    return sorted(files)
+
+
 def walk(target, limit=20000, exclude=()):
-    """Yield file paths relative to `target`, skipping dependency/build folders and `exclude` paths."""
+    """Yield file paths relative to `target`, skipping dependency/build folders, `exclude` paths and,
+    in a git repository, anything .gitignore'd."""
     target = os.path.realpath(target)
-    excl = {os.path.join(target, e) for e in exclude}
     n = 0
+    tracked = git_files(target)
+    if tracked is not None:
+        for rel in tracked:
+            if not skipped(rel, exclude) and os.path.isfile(os.path.join(target, rel)):
+                yield rel
+                n += 1
+                if n >= limit:
+                    return
+        return
+    excl = {os.path.join(target, e) for e in exclude}
     for dirpath, dirnames, filenames in os.walk(target):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".build")
-                             and not d.endswith((".xcassets", ".xcodeproj", ".xcworkspace"))
-                             and os.path.join(dirpath, d) not in excl)
+        dirnames[:] = sorted(d for d in dirnames if not _skip_dir(d) and os.path.join(dirpath, d) not in excl)
         for f in sorted(filenames):
             yield os.path.relpath(os.path.join(dirpath, f), target)
             n += 1
             if n >= limit:
                 return
-
-
-def skipped(rel, exclude=()):
-    """True if a relative path lies in a folder `walk` would skip."""
-    parts = rel.split("/")
-    return any(p in SKIP_DIRS or p.startswith(".build") for p in parts[:-1]) or \
-        any(rel == e or rel.startswith(e + "/") for e in exclude)
 
 
 def detect(target, exclude=()):

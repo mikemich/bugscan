@@ -7,6 +7,7 @@
 # fail_on = "new"           # what makes `bugscan scan` fail: new | any | none
 # min_severity = "medium"   # ignore findings below this when deciding failure
 # fuzz_seconds = 60         # fuzzing time, overriding the level's default
+# skip = ["types"]          # turn off built-in checks: secrets sast lint deps types tests fuzz memory
 
 # Your own checks: any command. Findings come from a SARIF file written to $BUGSCAN_SARIF,
 # from regex matchers over the output, or (if neither) one finding when the command fails.

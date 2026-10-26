@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bugscan"
-version = "0.1.0"
+version = "0.2.0"
 description = "Find bugs in any folder, mostly automatically: secrets, static analysis, vulnerable dependencies, fuzzing and sanitizers, with Claude to explain and fix what it finds."
 readme = "README.md"
 license = {text = "MIT"}

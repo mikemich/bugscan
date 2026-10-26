@@ -21,6 +21,11 @@ def read(name):
 
 
 class ToolParserTests(unittest.TestCase):
+    def test_semgrep_rule_ids_from_cached_packs_are_clean(self):
+        cfg = "/Users/me/.cache/bugscan/rules/p_python.yml"
+        self.assertEqual(sast.clean_rule_id("Users.me..cache.bugscan.rules.python.lang.x", [cfg]), "python.lang.x")
+        self.assertEqual(sast.clean_rule_id("python.lang.x", [cfg]), "python.lang.x")
+
     def test_semgrep(self):
         items = sast.parse(fx("semgrep.json"), SRC, {"bugscan.js-innerhtml-template"})
         self.assertEqual([i["severity"] for i in items], ["medium", "high", "low"])
@@ -35,26 +40,63 @@ class ToolParserTests(unittest.TestCase):
         self.assertEqual((f["file"], f["line"], f["severity"]), ("config.py", 2, "critical"))
         self.assertIn("Found in commit 01234567", f["message"])
 
-    def test_osv_versions_kev_and_summaries(self):
+    def with_kev(self, ids, fn):
         kev = paths.cache("kev.json")
         backup = open(kev).read() if os.path.exists(kev) else None
         with open(kev, "w") as fh:
-            json.dump({"vulnerabilities": [{"cveID": "CVE-2020-8203"}]}, fh)
+            json.dump({"vulnerabilities": [{"cveID": i} for i in ids]}, fh)
         try:
-            items = {i["rule"]: i for i in deps.parse(fx("osv.json"), SRC)}
+            return fn()
         finally:
             if backup is None:
                 os.remove(kev)
             else:
                 with open(kev, "w") as fh:
                     fh.write(backup)
-        cmd = items["CVE-2021-23337"]
-        self.assertEqual((cmd["severity"], cmd["extra"]["fixed"], cmd["file"]), ("high", "4.17.21", "package-lock.json"))
-        proto = items["CVE-2020-8203"]
-        self.assertEqual(proto["severity"], "critical")  # on the KEV list
-        self.assertIn("actively exploited", proto["message"])
-        self.assertIn("Prototype pollution in zipObjectDeep", proto["message"])  # details used when summary empty
-        self.assertEqual(proto["extra"]["fixed"], "4.17.19")  # nearest fix above 4.17.15, not 3.0.1
+
+    def test_osv_one_finding_per_package(self):
+        items = self.with_kev([], lambda: deps.parse(fx("osv.json"), SRC))
+        self.assertEqual(len(items), 1)
+        f = items[0]
+        self.assertEqual((f["severity"], f["file"], f["extra"]["fixed"]), ("high", "package-lock.json", "4.17.21"))
+        self.assertIn("2 known vulnerabilities (1 high, 1 medium). Upgrade to 4.17.21 to fix them.", f["message"])
+        advisories = {a["id"]: a for a in f["extra"]["advisories"]}
+        self.assertEqual(advisories["CVE-2020-8203"]["fixed"], "4.17.19")  # nearest fix above 4.17.15, not 3.0.1
+        self.assertIn("Prototype pollution in zipObjectDeep", advisories["CVE-2020-8203"]["summary"])  # details when no summary
+
+    def test_osv_without_groups(self):
+        with open(fx("osv.json")) as fh:
+            doc = json.load(fh)
+        for r in doc["results"]:
+            for pk in r["packages"]:
+                pk.pop("groups")
+        p = TempProject({"osv.json": json.dumps(doc)})
+        try:
+            f = self.with_kev([], lambda: deps.parse(os.path.join(p.root, "osv.json"), SRC))[0]
+            self.assertEqual((len(f["extra"]["advisories"]), f["extra"]["fixed"]), (2, "4.17.21"))
+        finally:
+            p.cleanup()
+
+    def test_osv_kev_makes_it_critical(self):
+        f = self.with_kev(["CVE-2020-8203"], lambda: deps.parse(fx("osv.json"), SRC))[0]
+        self.assertEqual(f["severity"], "critical")
+        self.assertIn("Actively exploited", f["message"])
+
+    def test_dev_only_packages_rank_lower(self):
+        p = TempProject({"package-lock.json": json.dumps({"packages": {"": {}, "node_modules/lodash": {"version": "4.17.15", "dev": True}}})})
+        try:
+            with open(fx("osv.json")) as fh:
+                doc = json.load(fh)
+            doc["results"][0]["source"]["path"] = os.path.join(p.root, "package-lock.json")
+            p.write({"osv.json": json.dumps(doc)})
+            f = self.with_kev([], lambda: deps.parse(os.path.join(p.root, "osv.json"), findings.Source(p.root)))[0]
+            self.assertEqual((f["severity"], f["extra"]["dev"]), ("medium", True))
+            self.assertIn("Dev dependency", f["message"])
+            # …but never when actively exploited
+            f = self.with_kev(["CVE-2021-23337"], lambda: deps.parse(os.path.join(p.root, "osv.json"), findings.Source(p.root)))[0]
+            self.assertEqual(f["severity"], "critical")
+        finally:
+            p.cleanup()
 
     def test_version_ordering(self):
         self.assertLess(deps._ver("1.11.28"), deps._ver("2.2.10"))
@@ -101,8 +143,11 @@ class SanitizerParserTests(unittest.TestCase):
         self.assertTrue(races)
         self.assertTrue(all(r["file"] == "Sources/Counter/Counter.swift" for r in races))
         self.assertTrue(any("increment" in r["message"] for r in races))
-        fails = sanitize.xctest_failures(read("swift-tsan.txt") + "\n/PROJECT/Tests/T.swift:9: error: -[Mod.T testX] : XCTAssertTrue failed\n", SRC)
-        self.assertIn(("Tests/T.swift", 9), [(f["file"], f["line"]) for f in fails])
+        fails = sanitize.xctest_failures(read("swift-tsan.txt") + "\n/PROJECT/Tests/T.swift:9: error: -[Mod.T testX] : XCTAssertTrue failed\n"
+                                         "/PROJECT/Tests/L.swift:4: error: CounterTests.testLinux : XCTAssertEqual failed\n", SRC)
+        got = {(f["file"], f["line"]): f["message"] for f in fails}
+        self.assertIn("testX", got[("Tests/T.swift", 9)])          # macOS format
+        self.assertIn("testLinux", got[("Tests/L.swift", 4)])      # Linux format
 
 
 if __name__ == "__main__":

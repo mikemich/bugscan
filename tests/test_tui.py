@@ -96,3 +96,27 @@ class TuiTests(unittest.TestCase):
     def test_small_terminal(self):
         self.start(rows=12, cols=50)
         self.expect("Make the terminal bigger")
+
+    def test_triage_and_ignore_flagged(self):
+        from bugscan import findings
+        db = findings.DB(self.p.root)
+        r = db.begin_run("standard", ["sast"])
+        db.ingest(r, "sast", [findings.make("sast", "semgrep", "sha1", "medium", "app.py", 1, "Weak hash SHA1")], True)
+        db.end_run(r)
+        fid = db.findings()[0]["id"]
+        db.close()
+        verdicts = json.dumps([{"id": fid, "verdict": "false-positive", "reason": "only used for ids"}])
+        with FakeClaude(triage=verdicts):
+            env = {k: os.environ[k] for k in ("BUGSCAN_CLAUDE", "FAKE_CLAUDE")}
+            self.start(env=env)
+            self.expect("BUG SCANNER")
+            self.ui.send("f")
+            self.expect("Weak hash SHA1")
+            self.ui.send("T")
+            ok = self.ui.wait_for("[likely FP]", timeout=45)
+            self.ui.pump(0.5)
+            self.assertTrue(ok, "\n".join(self.ui.text().splitlines()[-3:]))
+            self.ui.send("I")
+            self.expect("Ignore 1 finding")
+            self.ui.send("y")
+            self.expect("Ignored 1")

@@ -11,6 +11,7 @@ import math
 import os
 import re
 import sqlite3
+import threading
 import time
 
 from . import __version__, paths
@@ -119,7 +120,7 @@ CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY, started REAL, finished R
 CREATE TABLE IF NOT EXISTS stage_runs(run_id INTEGER, stage TEXT, status TEXT, secs INTEGER, found INTEGER, new INTEGER);
 CREATE TABLE IF NOT EXISTS findings(fp TEXT PRIMARY KEY, stage TEXT, tool TEXT, rule TEXT, severity TEXT, file TEXT,
   line INTEGER, message TEXT, snippet TEXT, extra TEXT, status TEXT, first_run INTEGER, last_run INTEGER,
-  fixed_run INTEGER, reopened_run INTEGER, explanation TEXT);
+  fixed_run INTEGER, reopened_run INTEGER, explanation TEXT, triage TEXT, triage_reason TEXT);
 """
 
 
@@ -135,13 +136,27 @@ def grade(score):
 STATE_ORDER = {"new": 0, "came back": 1, "open": 2, "fixed": 3, "ignored": 4}
 
 
+def _locked(fn):
+    """The UI reads while background jobs write; one connection, one lock."""
+    def wrapper(self, *a, **kw):
+        with self.lock:
+            return fn(self, *a, **kw)
+    wrapper.__name__, wrapper.__doc__ = fn.__name__, fn.__doc__
+    return wrapper
+
+
 class DB:
     def __init__(self, target):
+        self.lock = threading.RLock()
         self.target = os.path.realpath(target)
         self.path = os.path.join(paths.workspace(target), "findings.db")
         self.con = sqlite3.connect(self.path, check_same_thread=False, timeout=30)
         self.con.row_factory = sqlite3.Row
         self.con.executescript(SCHEMA)
+        cols = {r["name"] for r in self.con.execute("PRAGMA table_info(findings)")}
+        for col in ("triage", "triage_reason"):  # added in 0.2.0
+            if col not in cols:
+                self.con.execute(f"ALTER TABLE findings ADD COLUMN {col} TEXT")
 
     def close(self):
         self.con.close()
@@ -152,11 +167,13 @@ class DB:
         except Exception:
             pass
 
+    @_locked
     def begin_run(self, profile, stages):
         cur = self.con.execute("INSERT INTO runs(started, profile, stages) VALUES (?,?,?)", (time.time(), profile, ",".join(stages)))
         self.con.commit()
         return cur.lastrowid
 
+    @_locked
     def ingest(self, run, stage, items, complete):
         """Store one check's findings. `complete`: the check looked at everything, so missing findings are fixed."""
         c, seen = self.con, set()
@@ -185,14 +202,17 @@ class DB:
         c.commit()
         return {"found": len(seen), "new": new, "came_back": came_back, "fixed": fixed}
 
+    @_locked
     def record_stage(self, run, stage, status, secs, found=0, new=0):
         self.con.execute("INSERT INTO stage_runs VALUES (?,?,?,?,?,?)", (run, stage, status, secs, found, new))
         self.con.commit()
 
+    @_locked
     def open_counts(self):
         rows = self.con.execute("SELECT severity, COUNT(*) n FROM findings WHERE status='open' GROUP BY severity").fetchall()
         return {r["severity"]: r["n"] for r in rows}
 
+    @_locked
     def end_run(self, run):
         counts = self.open_counts()
         score = score_of(counts)
@@ -200,19 +220,23 @@ class DB:
         self.con.commit()
         return score
 
+    @_locked
     def latest_run(self):
         r = self.con.execute("SELECT * FROM runs WHERE finished IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
         return dict(r) if r else None
 
+    @_locked
     def runs(self, limit=50):
         rows = self.con.execute("SELECT * FROM runs WHERE finished IS NOT NULL ORDER BY id DESC LIMIT ?", (limit,))
         return [dict(r) for r in rows][::-1]
 
+    @_locked
     def latest_stage_results(self):
         """Most recent result of each check, whichever scan it ran in."""
         rows = self.con.execute("SELECT * FROM stage_runs WHERE rowid IN (SELECT MAX(rowid) FROM stage_runs GROUP BY stage)")
         return {r["stage"]: dict(r) for r in rows}
 
+    @_locked
     def findings(self, include_closed=False):
         latest = self.con.execute("SELECT MAX(id) FROM runs").fetchone()[0]  # includes a scan in progress
         where = "" if include_closed else "WHERE status='open'"
@@ -230,6 +254,7 @@ class DB:
                                 d["file"] or "", d["line"] or 0))
         return out
 
+    @_locked
     def get(self, ident):
         """A finding by full fingerprint or its short id (first characters)."""
         rows = self.con.execute("SELECT fp FROM findings WHERE fp LIKE ?", (ident + "%",)).fetchall()
@@ -237,14 +262,22 @@ class DB:
             return None
         return next((f for f in self.findings(include_closed=True) if f["fp"] == rows[0]["fp"]), None)
 
+    @_locked
     def set_status(self, fp, status):
         self.con.execute("UPDATE findings SET status=? WHERE fp=?", (status, fp))
         self.con.commit()
 
+    @_locked
+    def set_triage(self, fp, verdict, reason):
+        self.con.execute("UPDATE findings SET triage=?, triage_reason=? WHERE fp=?", (verdict, reason, fp))
+        self.con.commit()
+
+    @_locked
     def set_explanation(self, fp, text):
         self.con.execute("UPDATE findings SET explanation=? WHERE fp=?", (text, fp))
         self.con.commit()
 
+    @_locked
     def score(self):
         s = score_of(self.open_counts())
         return s, grade(s)
@@ -274,5 +307,5 @@ def to_sarif(items):
 
 
 def to_json(items):
-    keys = ("id", "fp", "state", "severity", "stage", "tool", "rule", "file", "line", "message", "extra")
+    keys = ("id", "fp", "state", "severity", "stage", "tool", "rule", "file", "line", "message", "triage", "extra")
     return [{k: f[k] for k in keys} for f in items]

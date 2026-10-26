@@ -1,5 +1,6 @@
 """Checks that drive real tools (gitleaks, semgrep, osv-scanner, go, swift). Skipped when a tool is missing."""
 import json
+import sys
 import unittest
 
 from tests.helpers import TempProject, copy_fixture, fake_token, needs, needs_network, slow
@@ -14,6 +15,19 @@ def run(p, *stages, **kw):
     s = engine.Scan(p.root, stages=list(stages), **kw)
     res = s.run()
     return res, s.db.findings()
+
+
+def diag(p, res, stage):
+    """Status, note and log tail of a check, for assertion messages (CI failures explain themselves)."""
+    import os
+    from bugscan import paths
+    st = res["stages"].get(stage, {})
+    log = os.path.join(paths.workspace(p.root), f"{stage}.log")
+    tail = "(no log)"
+    if os.path.exists(log):
+        with open(log) as fh:
+            tail = fh.read()[-3000:]
+    return f"\n{stage}: {st.get('status')} {st.get('note', '')}\n--- log tail ---\n{tail}"
 
 
 class SecretsTests(unittest.TestCase):
@@ -84,15 +98,18 @@ class DepsTests(unittest.TestCase):
         p = TempProject({"package-lock.json": LOCK, "requirements.txt": "django==2.0\n"})
         try:
             res, items = run(p, "deps")
-            deps = [f for f in items if f["stage"] == "deps"]
-            self.assertGreater(len(deps), 10)
-            lodash = [f for f in deps if f["extra"]["package"] == "lodash"]
-            self.assertTrue(lodash and all(f["file"] == "package-lock.json" for f in lodash))
-            self.assertTrue(any(f["extra"].get("fixed") == "4.17.21" for f in lodash))
+            deps = {f["extra"]["package"]: f for f in items if f["stage"] == "deps"}
+            self.assertTrue({"lodash", "django"} <= set(deps), f"{deps.keys()}" + diag(p, res, "deps"))  # one finding per package
+            lodash = deps["lodash"]
+            self.assertEqual(lodash["file"], "package-lock.json")
+            self.assertGreater(len(lodash["extra"]["advisories"]), 3)
+            self.assertGreaterEqual(tuple(int(x) for x in lodash["extra"]["fixed"].split(".")), (4, 17, 21))
             # upgrading fixes them
             p.write({"package-lock.json": LOCK.replace("4.17.15", "4.17.21"), "requirements.txt": "django==5.2.8\n"})
-            res, _ = run(p, "deps")
-            self.assertGreaterEqual(res["stages"]["deps"]["fixed"], len(lodash))
+            p.write({"package-lock.json": LOCK.replace("4.17.15", lodash["extra"]["fixed"])})
+            res, items = run(p, "deps")
+            self.assertGreaterEqual(res["stages"]["deps"]["fixed"], 1)
+            self.assertNotIn("lodash", {f["extra"]["package"] for f in items if f["stage"] == "deps" and f["status"] == "open"})
         finally:
             p.cleanup()
 
@@ -112,7 +129,7 @@ class MemoryTests(unittest.TestCase):
         try:
             res, items = run(p, "memory")
             rules = {(f["rule"], f["file"]) for f in items}
-            self.assertIn(("data-race", "counter.go"), rules)
+            self.assertIn(("data-race", "counter.go"), rules, diag(p, res, "memory"))
             self.assertIn(("go-vet", "counter.go"), rules)
             self.assertIn(("test-failure", "counter_test.go"), rules)
         finally:
@@ -125,7 +142,9 @@ class MemoryTests(unittest.TestCase):
         try:
             res, items = run(p, "memory")
             rules = {f["rule"] for f in items}
-            self.assertTrue({"swift-concurrency", "data-race", "test-failure"} <= rules, rules)
+            # ThreadSanitizer is reliable on macOS; on Linux it depends on the environment (it can hang or stay silent)
+            expected = {"swift-concurrency", "test-failure"} | ({"data-race"} if sys.platform == "darwin" else set())
+            self.assertTrue(expected <= rules, f"{rules}" + diag(p, res, "memory"))
             self.assertTrue(all(f["file"] and not f["file"].startswith("/") for f in items))
         finally:
             p.cleanup()

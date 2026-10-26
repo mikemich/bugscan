@@ -66,7 +66,7 @@ class ConfigTests(unittest.TestCase):
 
     def test_defaults_without_file(self):
         c = config.load(self.p.root)
-        self.assertEqual(c["scan"], {"level": "standard", "exclude": [], "fail_on": "new", "min_severity": "medium", "fuzz_seconds": None})
+        self.assertEqual(c["scan"], {"level": "standard", "exclude": [], "fail_on": "new", "min_severity": "medium", "fuzz_seconds": None, "skip": []})
         self.assertEqual(c["checks"], [])
 
     def test_full_config(self):
@@ -105,3 +105,11 @@ class ConfigTests(unittest.TestCase):
         self.bad("[[check]]\nname = \"a\"\nrun = \"x\"\nmatchers = [{ regex = 'x' }]", "message")
         self.bad('[[seed]]\nname = "a b"\nurl = "u"', "seed")
         self.bad('not toml at all [', "config.toml")
+        self.bad('[scan]\nskip = ["nope"]', "unknown built-in")
+
+    def test_skip_turns_checks_off(self):
+        from bugscan import engine
+        self.p.write({".bugscan/config.toml": '[scan]\nskip = ["lint"]\n', "a.py": ""})
+        proj = engine.Project(self.p.root)
+        self.assertEqual(proj.availability("lint"), (False, "turned off in .bugscan/config.toml"))
+        self.assertNotIn("lint", proj.default_stages("standard"))

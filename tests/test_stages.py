@@ -97,10 +97,16 @@ class CustomCheckTests(unittest.TestCase):
     def test_missing_tool_skips(self):
         self.assertEqual(self.run_check(requires=["definitely-not-a-tool"]).status, "skip")
 
+    def test_timeout_forces_stubborn_commands(self):
+        t = time.monotonic()
+        res = self.run_check(run="trap '' TERM; sleep 60 & wait; sleep 60", timeout=1)
+        self.assertLess(time.monotonic() - t, 15)  # SIGTERM ignored: SIGKILL follows
+        self.assertEqual(len(res.items), 1)
+
     def test_timeout(self):
-        t = time.time()
+        t = time.monotonic()
         res = self.run_check(run="sleep 30", timeout=1)
-        self.assertLess(time.time() - t, 10)
+        self.assertLess(time.monotonic() - t, 10)
         self.assertEqual(len(res.items), 1)
 
 
@@ -213,7 +219,22 @@ class EngineTests(unittest.TestCase):
         s.cancel()
         t.join(15)
         self.assertFalse(t.is_alive())
-        self.assertEqual({k: v["status"] for k, v in out["stages"].items()}, {"slow": "cancelled", "lint": "cancelled"})
+        # quick checks run first, so lint finished before the cancel; the slow one was stopped
+        self.assertEqual({k: v["status"] for k, v in out["stages"].items()}, {"slow": "cancelled", "lint": "clean"})
+
+    def test_quick_checks_run_in_parallel(self):
+        proj = engine.Project(self.p.root)
+        def slow_run(ctx):
+            time.sleep(1.5)
+            from bugscan.stages.base import Result
+            return Result("ok", [])
+        for k in ("secrets", "sast", "lint", "deps"):
+            proj.stage(k).run = slow_run
+            proj.stage(k).applies = lambda info, cfg: (True, "")
+        t = time.monotonic()
+        res = engine.Scan(proj, stages=["secrets", "sast", "lint", "deps"]).run()
+        self.assertLess(time.monotonic() - t, 4)  # 4 x 1.5 s in parallel, not 6 s in a row
+        self.assertEqual({v["status"] for v in res["stages"].values()}, {"clean"})
 
     def test_broken_check_does_not_kill_scan(self):
         proj = engine.Project(self.p.root)

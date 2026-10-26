@@ -6,6 +6,7 @@
     fail_on = "new"               # what fails `bugscan scan`: new | any | none
     min_severity = "medium"       # ignore anything below this when deciding failure
     fuzz_seconds = 60             # override the level's fuzzing time
+    skip = ["types"]              # turn off built-in checks
 
     [[check]]                     # your own checks: any command, any language
     name = "unit-tests"
@@ -27,7 +28,7 @@ from . import paths
 
 LEVELS = ("quick", "standard", "deep")
 SEVERITIES = ("critical", "high", "medium", "low", "info")
-RESERVED = {"secrets", "sast", "lint", "deps", "fuzz", "memory"}
+RESERVED = {"secrets", "sast", "lint", "deps", "types", "tests", "fuzz", "memory"}
 
 
 class ConfigError(Exception):
@@ -59,6 +60,7 @@ def validate(raw, where="config"):
             "fail_on": scan.get("fail_on", "new"),
             "min_severity": scan.get("min_severity", "medium"),
             "fuzz_seconds": scan.get("fuzz_seconds"),
+            "skip": list(scan.get("skip", [])),
         },
         "checks": [],
         "seeds": [],
@@ -70,6 +72,9 @@ def validate(raw, where="config"):
         raise ConfigError(f"{where}: scan.fail_on must be new, any or none")
     if s["min_severity"] not in SEVERITIES:
         raise ConfigError(f"{where}: scan.min_severity must be one of {', '.join(SEVERITIES)}")
+    unknown = [k for k in s["skip"] if k not in RESERVED]
+    if unknown:
+        raise ConfigError(f"{where}: scan.skip lists unknown built-in checks: {', '.join(unknown)} (choose from {', '.join(sorted(RESERVED))})")
     if s["fuzz_seconds"] is not None and not isinstance(s["fuzz_seconds"], int):
         raise ConfigError(f"{where}: scan.fuzz_seconds must be a whole number")
     names = set()

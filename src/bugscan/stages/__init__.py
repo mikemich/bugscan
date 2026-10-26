@@ -6,8 +6,10 @@ from .lint import Lint
 from .sanitize import Sanitize
 from .sast import Sast
 from .secrets import Secrets
+from .tests import Tests
+from .types import Types
 
-BUILTIN = [Secrets, Sast, Lint, Deps, Fuzz, Sanitize]
+BUILTIN = [Secrets, Sast, Lint, Deps, Types, Tests, Fuzz, Sanitize]
 
 
 def all_stages(config):

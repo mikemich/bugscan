@@ -100,7 +100,8 @@ def bugscan_cmd(*args):
 
 def run_cli(*args, cwd=None, env=None, timeout=900):
     e = dict(os.environ, PYTHONPATH=SRC, **(env or {}))
-    return subprocess.run(bugscan_cmd(*args), capture_output=True, text=True, cwd=cwd, env=e, timeout=timeout)
+    return subprocess.run(bugscan_cmd(*args), capture_output=True, text=True, cwd=cwd, env=e, timeout=timeout,
+                          stdin=subprocess.DEVNULL)
 
 
 class FakeClaude:
@@ -152,8 +153,8 @@ class Tui:
         self.dec = codecs.getincrementaldecoder("utf-8")("replace")
 
     def pump(self, t):
-        end = time.time() + t
-        while time.time() < end:
+        end = time.monotonic() + t
+        while time.monotonic() < end:
             r, _, _ = select.select([self.fd], [], [], 0.05)
             if r:
                 try:
@@ -171,8 +172,8 @@ class Tui:
         os.write(self.fd, keys.encode() if isinstance(keys, str) else keys)
 
     def wait_for(self, *texts, timeout=10):
-        end = time.time() + timeout
-        while time.time() < end:
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
             self.pump(0.2)
             if all(t in self.flat() for t in texts):
                 return True

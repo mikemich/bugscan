@@ -4,10 +4,12 @@ Go: go vet, then the tests under the race detector."""
 import os
 import re
 import shutil
+import time
 
 from .. import detect, findings
 from .base import Result, Stage, skip
 
+SANITIZER_TIMEOUT = int(os.environ.get("BUGSCAN_SANITIZER_TIMEOUT", "600"))
 CONCURRENCY = re.compile(r"concurren|Sendable|data race|actor|isolat|sending", re.I)
 
 
@@ -59,7 +61,10 @@ def swift(ctx):
         if ctx.should_stop():
             break
         ctx.log(f"── swift test --sanitize={san}")
-        _, out = ctx.run(["swift", "test", f"--sanitize={san}"])
+        t0 = time.monotonic()
+        _, out = ctx.run(["swift", "test", f"--sanitize={san}"], timeout=SANITIZER_TIMEOUT)
+        if time.monotonic() - t0 >= SANITIZER_TIMEOUT - 1:
+            ctx.log(f"   stopped after {SANITIZER_TIMEOUT // 60} min (sanitizers can hang in some Linux/Docker setups)")
         items += sanitizer_reports(out, ctx.src, index) + xctest_failures(out, ctx.src)
     return items
 
@@ -104,10 +109,12 @@ def sanitizer_reports(text, src, index):
 
 def xctest_failures(text, src):
     out = []
-    for m in re.finditer(r"^(/\S+\.swift):(\d+): error: -\[\S+ (\w+)\] : (.*)$", text, re.M):
+    # macOS: "-[Module.Class testName] : msg"   Linux: "Class.testName : msg"
+    for m in re.finditer(r"^(/\S+\.swift):(\d+): error: (?:-\[\S+ (\w+)\]|[\w.]*?\.?(\w+)) : (.*)$", text, re.M):
         file, line = src.rel(m.group(1)), int(m.group(2))
+        name = m.group(3) or m.group(4)
         out.append(findings.make("memory", "xctest", "test-failure", "medium", file, line,
-                                 f"Test {m.group(3)} fails: {m.group(4)}", src.line(file, line), key=f"{m.group(3)}|{m.group(4)}"))
+                                 f"Test {name} fails: {m.group(5)}", src.line(file, line), key=f"{name}|{m.group(5)}"))
     for m in re.finditer(r"✘ Test (\S+) recorded an issue at (\S+?):(\d+):\d+: (.*)$", text, re.M):
         out.append(findings.make("memory", "swift-testing", "test-failure", "medium", m.group(2), int(m.group(3)),
                                  f"Test {m.group(1)} fails: {m.group(4)}", key=f"{m.group(1)}|{m.group(4)}"))

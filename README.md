@@ -4,8 +4,10 @@ Find bugs in any folder, mostly automatically. Open a folder and press Enter: bu
 
 - **Secrets:** gitleaks over the whole git history.
 - **Static analysis:** Semgrep rule packs picked for your languages, plus built-in and project rules.
-- **Vulnerable dependencies:** osv-scanner, ranked by CISA's actively-exploited list, with the version that fixes each one.
+- **Vulnerable dependencies:** osv-scanner. One finding per package ("upgrade torch to 2.13.0 fixes 19 vulnerabilities"), ranked by CISA's actively-exploited list, with dev-only packages ranked lower.
 - **Syntax lint:** JS, Python, shell, JSON and plist.
+- **Types & linters:** `tsc --noEmit`, `ruff` and `cargo clippy`.
+- **Your tests:** `npm test`, `pytest` and `cargo test`. Each failing test is a finding.
 - **Fuzzing:** of any JS/TS or Python project. Claude can write the harness for you.
 - **Memory & races:** Swift strict concurrency plus Thread/AddressSanitizer test runs, and the Go race detector plus `go vet`.
 - **Your own checks:** any command, reporting through SARIF, regex matchers or its exit code.
@@ -37,7 +39,8 @@ bugscan scan            # command line / CI
 | `tab` · `1` `2` `3` | **Quick** (changed files only, seconds) · **Standard** (everything, 1 min fuzzing) · **Deep** (30 min fuzzing) |
 | `f` | findings: `tab` New / Open / All · `v` minimum severity · `/` search |
 | `e` | Claude explains the finding: a verdict (real issue or false positive), what's wrong, why it matters, how to fix it |
-| `x` | Claude fixes it. You see the diff, `y` keeps it and the check re-runs to verify, `n` undoes it |
+| `x` | fix it. You see the diff, `y` keeps it and the check re-runs to verify, `n` undoes it. Vulnerable dependencies are upgraded directly (npm, or the pin in `requirements.txt`) and your tests run; anything else goes to Claude. `C` always asks Claude |
+| `T` · `I` | Claude triages every open finding (real / likely false positive / unsure) · ignore everything it flagged |
 | `r` | after a fix: Claude writes a Semgrep rule for that bug pattern into `.bugscan/rules.yml`, used on every later scan |
 | `g` | Claude writes a fuzz harness for the project |
 | `i` · `o` | ignore a finding · open the file at that line (`$VISUAL`/`$EDITOR`, VS Code, Cursor, Zed, Xcode) |
@@ -47,6 +50,8 @@ bugscan scan            # command line / CI
 
 ### How findings are tracked
 
+bugscan respects `.gitignore` and includes nested repositories. The quick checks (secrets, static analysis, lint, dependencies) run in parallel.
+
 Every finding gets a fingerprint that survives line shifts, so between scans it's **new**, **open**, **fixed**, **came back** or **ignored**. Only new and came-back issues fail `bugscan scan` and the git hook, so existing issues never block you. Health (0–100, graded A–F) is computed from the open findings, weighted by severity.
 
 Fuzzer crashes are saved to `.bugscan/fuzz/regressions/` and replayed first on every later run, so a fixed bug stays fixed. Commit that folder.
@@ -54,7 +59,7 @@ Fuzzer crashes are saved to `.bugscan/fuzz/regressions/` and replayed first on e
 ## Claude
 
 Claude features run through your local Claude Code (`claude -p`), so they use your existing login. Code is only sent when you press a key, and each action gets only the tools it needs:
-- **Explain and summary:** read-only.
+- **Explain, triage and summary:** read-only.
 - **Fix:** may edit files. A git snapshot is taken first so every change can be undone, including new files, without touching your own uncommitted work.
 - **Harness:** may run `node`/`python3` to test itself.
 
@@ -63,7 +68,7 @@ Claude features run through your local Claude Code (`claude -p`), so they use yo
 ```bash
 bugscan scan [-t DIR] [--level quick|standard|deep] [--stages sast,deps] [--fuzz SECS]
              [--fail-on new|any|none] [--min-severity high] [--sarif out.sarif] [--json out.json] [--out DIR]
-bugscan findings [--all] [--json]       bugscan show|explain|fix|ignore ID
+bugscan findings [--all] [--json]       bugscan show|explain|fix|ignore ID       bugscan triage
 bugscan sync | report [--open] | doctor | init | hook install|uninstall
 ```
 
@@ -144,6 +149,10 @@ How the fuzzer works:
 | `<project>/.bugscan/` | yours to commit: `config.toml`, `rules.yml`, `fuzz/harness.*`, `fuzz/regressions/`, `fuzz/known-crashes.txt` |
 | `~/.cache/bugscan/projects/<name>-<hash>/` | results per project: `findings.db`, per-check logs, `report.html`. bugscan never writes into a project outside `.bugscan/` |
 | `~/.cache/bugscan/` | cached Semgrep packs, the CISA KEV list, a fuzzing dictionary |
+
+## Releasing
+
+Bump `version` in `pyproject.toml` and `src/bugscan/__init__.py`, add a `## x.y.z` section to `CHANGELOG.md`, then tag and push it (`git tag -a vx.y.z -m … && git push origin vx.y.z`). The release workflow publishes the GitHub release, with that changelog section as its notes, and updates the Homebrew formula in `mikemich/homebrew-tap`. That last step needs a `TAP_TOKEN` repository secret: a fine-grained token with Contents read & write on the tap.
 
 ## Development
 

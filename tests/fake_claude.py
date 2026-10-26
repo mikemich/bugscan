@@ -4,6 +4,7 @@
   rule:     YAML to print for rule prompts
   harness:  {"path": rel, "content": text} file to write for harness prompts
   summary:  text to print for summary prompts
+  triage:   text to print for triage prompts (a JSON array of verdicts)
   stderr:   text to print to stderr (must be captured, never leak onto the UI)
 Every call is appended to the `log` file as JSON (argv + which kind of prompt it was)."""
 import json
@@ -18,7 +19,7 @@ if "--version" in args:
 prompt = args[args.index("-p") + 1] if "-p" in args else ""
 tools = args[args.index("--allowedTools") + 1] if "--allowedTools" in args else ""
 mode = args[args.index("--permission-mode") + 1] if "--permission-mode" in args else None
-kind = ("harness" if "Write a fuzz harness" in prompt else "rule" if "Semgrep rule" in prompt else
+kind = ("triage" if "decide whether it is a real problem" in prompt else "harness" if "Write a fuzz harness" in prompt else "rule" if "Semgrep rule" in prompt else
         "fix" if "Fix it with the smallest" in prompt else "summary" if "Write a short report" in prompt else "explain")
 with open(conf["log"], "a") as fh:
     fh.write(json.dumps({"kind": kind, "tools": tools, "mode": mode, "cwd": os.getcwd(), "prompt": prompt[:4000]}) + "\n")

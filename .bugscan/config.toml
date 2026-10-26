@@ -1,6 +1,7 @@
 # bugscan scanning itself.
 [scan]
 exclude = ["tests/fixtures"]   # planted bugs live there on purpose
+skip = ["tests"]               # the suite runs below, in fast mode with its own cache
 
 [[check]]
 name = "unit-tests"

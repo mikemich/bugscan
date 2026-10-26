@@ -1,0 +1,53 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check the version matches the tag
+        run: |
+          v="${TAG#v}"
+          grep -q "^version = \"$v\"$" pyproject.toml || { echo "::error::pyproject.toml version isn't $v"; exit 1; }
+          grep -q "__version__ = \"$v\"" src/bugscan/__init__.py || { echo "::error::__version__ isn't $v"; exit 1; }
+      - name: Smoke test
+        run: |
+          pip install .
+          test "$(bugscan --version)" = "bugscan ${TAG#v}"
+      - name: Publish the GitHub release
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            # notes = this version's section of CHANGELOG.md
+            awk -v v="## ${TAG#v}" '$0==v{on=1;next} /^## /{on=0} on' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+            printf '\n## Install\n\n```bash\nbrew install mikemich/tap/bugscan\n```\n' >> "$RUNNER_TEMP/notes.md"
+            gh release create "$TAG" --verify-tag --title "bugscan ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+      - name: Bump the Homebrew formula
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::error::TAP_TOKEN secret is not set, so mikemich/homebrew-tap was not bumped. Add a fine-grained PAT with Contents: read & write on mikemich/homebrew-tap as the TAP_TOKEN repo secret, then re-run this job."
+            exit 1
+          fi
+          url="https://github.com/$GITHUB_REPOSITORY/archive/refs/tags/$TAG.tar.gz"
+          sha="$(curl -sSfL "$url" | sha256sum | cut -d' ' -f1)"
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/mikemich/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          cd "$RUNNER_TEMP/tap"
+          sed -i -E -e "s|^  url \".*\"$|  url \"$url\"|" -e "s|^  sha256 \".*\"$|  sha256 \"$sha\"|" Formula/bugscan.rb
+          grep -qF "$url" Formula/bugscan.rb && grep -qF "$sha" Formula/bugscan.rb
+          if git diff --quiet; then echo "Formula already points at $TAG"; exit 0; fi
+          git diff
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "bugscan ${TAG#v}"
+          git push origin HEAD:main

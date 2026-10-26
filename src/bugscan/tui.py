@@ -18,7 +18,7 @@ import textwrap
 import threading
 import time
 
-from . import claude, detect, engine, findings, hooks, paths, report, setup, sync
+from . import claude, detect, engine, findings, hooks, paths, report, setup, sync, upgrade
 from .config import ConfigError
 
 SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -132,8 +132,9 @@ class MainView(View):
             put(scr, 4, x, label, (curses.A_REVERSE | curses.A_BOLD) if p == app.profile else curses.A_DIM)
             x += len(label) + 1
         desc = engine.PROFILES[app.profile]["desc"]
-        if app.profile != "quick":
-            desc = re.sub(r"[\d.]+ (min|s) fuzzing", f"{fmt_secs(app.fuzz)} fuzzing", desc)
+        if app.profile != "quick":  # only promise fuzzing when something will fuzz
+            fuzzing = "fuzz" in app.selected or bool(app.project.config["checks"])
+            desc = "everything" + (f" · {fmt_secs(app.fuzz)} fuzzing" if fuzzing else "")
         if w > 80:
             put(scr, 4, x + 1, desc, curses.A_DIM)
         put(scr, 4, w - 18, "[tab] [+/-]", curses.color_pair(ACCENT))
@@ -228,7 +229,7 @@ def state_attr(state):
 
 
 class FindingsView(View):
-    keys = "↑↓ move  enter details  e explain  x fix  i ignore  o open file  tab filter  / search  v severity  q back"
+    keys = "↑↓ move  enter details  e explain  x fix  T triage all  i ignore  I ignore flagged  o open  tab filter  / search  q back"
     FILTERS = [("new", "New"), ("open", "Open"), ("all", "All")]
 
     def __init__(self, app):
@@ -279,7 +280,9 @@ class FindingsView(View):
             put(scr, 5 + j, 1, ("› " if here else "  ") + " " * (w - 3), base)
             put(scr, 5 + j, 3, f"{f['state']:<10}", base | state_attr(f["state"]))
             put(scr, 5 + j, 13, f"{f['severity']:<10}", base | SEV_ATTR.get(f["severity"], 0))
-            put(scr, 5 + j, 23, f"{app.project.titles.get(f['stage'], f['stage'])[:15]:<16}{loc:<30}{f['message']}"[: w - 25], base)
+            tag = {"false-positive": "[likely FP] ", "unsure": "[unsure] "}.get(f.get("triage") or "", "")
+            put(scr, 5 + j, 23, f"{app.project.titles.get(f['stage'], f['stage'])[:15]:<16}{loc:<30}{tag}{f['message']}"[: w - 25],
+                base | (curses.A_DIM if tag == "[likely FP] " else 0))
 
     def key(self, app, ch):
         items = self.visible(app)
@@ -314,6 +317,10 @@ class FindingsView(View):
             app.fix(f["fp"])
         elif f and ch == ord("i"):
             app.toggle_ignore(f["fp"])
+        elif ch == ord("T"):
+            app.triage()
+        elif ch == ord("I"):
+            app.ignore_flagged()
         elif f and ch == ord("o"):
             app.open_editor(f)
         else:
@@ -321,7 +328,7 @@ class FindingsView(View):
 
 
 class DetailView(View):
-    keys = "e explain  x fix  r make rule  i ignore  o open file  ↑↓ scroll  q back"
+    keys = "e explain  x fix  C fix with Claude  r make rule  i ignore  o open file  ↑↓ scroll  q back"
 
     def __init__(self, fp):
         self.fp, self.scroll = fp, 0
@@ -345,6 +352,19 @@ class DetailView(View):
                  "ACTIVELY EXPLOITED (CISA KEV)" if ex.get("kev") else "", ex.get("url") or "", f"reproducer: {ex['repro']}" if ex.get("repro") else ""]
         for fact in filter(None, facts):
             out.append(("  " + fact, curses.A_DIM))
+        if f.get("triage"):
+            col = {"real": RED, "false-positive": GREEN, "unsure": YELLOW}[f["triage"]]
+            out.append((f"  Claude triage: {f['triage']} - {f.get('triage_reason') or ''}"[: w - 4], curses.color_pair(col)))
+        if ex.get("advisories"):
+            out += [("", 0), (f"Advisories ({len(ex['advisories'])})", curses.A_BOLD)]
+            for a in ex["advisories"][:12]:
+                out.append((f"  {a['severity']:<9}{a['id']:<20}{('fixed in ' + a['fixed']) if a.get('fixed') else 'no fix yet':<20}{a['summary']}"[: w - 4],
+                            SEV_ATTR.get(a["severity"], 0)))
+            if len(ex["advisories"]) > 12:
+                out.append((f"  … and {len(ex['advisories']) - 12} more", curses.A_DIM))
+        up = upgrade.plan(f, app.target) if f["stage"] == "deps" and f["status"] == "open" else None
+        if up:
+            out += [("", 0), (f"Press x to upgrade without Claude: {up['describe']}", curses.color_pair(ACCENT))]
         code = claude.context(f, app.target, radius=6)
         if code:
             out += [("", 0), ("Code", curses.A_BOLD)]
@@ -391,6 +411,8 @@ class DetailView(View):
             app.explain(self.fp)
         elif ch == ord("x"):
             app.fix(self.fp)
+        elif ch == ord("C"):
+            app.fix(self.fp, use_claude=True)
         elif ch == ord("r"):
             app.make_rule(self.fp)
         elif ch == ord("i"):
@@ -592,7 +614,9 @@ MAIN SCREEN
 
 FINDINGS
   tab  New / Open / All     v  minimum severity     /  search
-  enter details   e  Claude explains   x  Claude fixes (you see the diff: y keeps it, n undoes it)
+  enter details   e  Claude explains   x  fix (you see the diff: y keeps it and re-checks, n undoes it)
+     dependencies are upgraded with npm / your requirements file, no Claude needed; C asks Claude instead
+  T  Claude triages every open finding (real / likely false positive / unsure)   I  ignore all flagged ones
   r  (after a fix) Claude writes a Semgrep rule so the same bug is caught everywhere
   i  ignore / un-ignore     o  open the file at that line ($VISUAL, $EDITOR, VS Code, Cursor, Zed, Xcode)
 
@@ -881,8 +905,9 @@ class App:
                 self.say("Claude didn't return an explanation.")
         self.start("Claude is explaining", lambda t: claude.explain(f, self.target, proc_holder=t.procs)[1], done, claude_task=True, fp=fp)
 
-    def fix(self, fp):
+    def fix(self, fp, use_claude=False):
         f = self.db.get(fp)
+        up = None if use_claude else upgrade.plan(f, self.target)
 
         def done(t):
             r = t.result
@@ -898,7 +923,10 @@ class App:
             self.push(TextView(f"Proposed fix · {len(r['tracked']) + len(r['new_files'])} file(s) changed", header + r["diff"],
                                actions={"y": ("keep it", lambda: self.keep_fix(fp)), "n": ("undo it", lambda: self.undo_fix(fp))},
                                colorize=diff_color))
-        self.start("Claude is fixing", lambda t: claude.fix(f, self.target, proc_holder=t.procs), done, claude_task=True, fp=fp)
+        if up:
+            self.start(f"Upgrading {up['package']}", lambda t: upgrade.apply(up, self.target, log=t.log), done, fp=fp)
+        else:
+            self.start("Claude is fixing", lambda t: claude.fix(f, self.target, proc_holder=t.procs), done, claude_task=True, fp=fp)
 
     def keep_fix(self, fp):
         self.pop()
@@ -907,7 +935,10 @@ class App:
 
         def run(t):  # re-run the check that found it, to prove the fix
             fuzz = 15 if f["stage"] == "fuzz" else None
-            return engine.Scan(self.project, "standard", [f["stage"]], fuzz, on_line=t.log).run()
+            stages = [f["stage"]]
+            if f["stage"] == "deps" and self.project.availability("tests")[0]:
+                stages.append("tests")  # an upgrade can break things: run the tests too
+            return engine.Scan(self.project, "standard", stages, fuzz, on_line=t.log).run()
 
         def done(t):
             self.refresh()
@@ -963,6 +994,33 @@ class App:
             return
         self.start("Claude is summarizing", lambda t: claude.summarize(self.target, self.db, proc_holder=t.procs),
                    lambda t: self.push(TextView("Summary", t.result["text"] or "No reply.")), claude_task=True)
+
+    def triage(self):
+        n = sum(f["status"] == "open" for f in self.items())
+        if not n:
+            self.say("Nothing open to triage.")
+            return
+
+        def done(t):
+            r = t.result
+            self.refresh()
+            if r.get("error"):
+                self.say(r["error"])
+                return
+            fp_n = sum(v == "false-positive" for v in r["verdicts"].values())
+            self.say(f"Claude triaged {r['count']}: {fp_n} likely false positive(s), marked [likely FP]. Press I to ignore them all.")
+        self.start(f"Claude is triaging {n} findings", lambda t: claude.triage(self.target, self.db, proc_holder=t.procs), done, claude_task=True)
+
+    def ignore_flagged(self):
+        flagged = [f for f in self.items() if f["status"] == "open" and f.get("triage") == "false-positive"]
+        if not flagged:
+            self.say("No open findings are flagged as false positives (press T to triage).")
+            return
+        if self.confirm(f"Ignore {len(flagged)} finding(s) Claude flagged as false positives? (y/n)"):
+            for f in flagged:
+                self.db.set_status(f["fp"], "ignored")
+            self.refresh()
+            self.say(f"Ignored {len(flagged)}. They're under All if you change your mind.")
 
     def toggle_ignore(self, fp):
         f = self.db.get(fp)

@@ -34,7 +34,10 @@ class Deps(Stage):
         if rc not in (0, 1) or not os.path.exists(report):
             return error(f"osv-scanner failed (exit {rc})")
         items = parse(report, ctx.src)
-        ctx.log(f"{len(items)} known vulnerabilities in {len({f['extra']['package'] for f in items})} packages")
+        total = sum(len(f["extra"]["advisories"]) for f in items)
+        ctx.log(f"{total} known vulnerabilities in {len(items)} packages")
+        for f in items:
+            ctx.log(f"  {f['file']}: {f['message'].split(' Worst:')[0]}")
         return Result("ok", items)
 
 
@@ -59,35 +62,86 @@ def kev_ids():
         return set()
 
 
+SEV_ORDER = ["critical", "high", "medium", "low", "info"]
+DOWNGRADE = {"critical": "high", "high": "medium", "medium": "low", "low": "low", "info": "info"}
+
+
+def dev_packages(lockfile):
+    """npm packages that are only needed for development/builds, from package-lock.json's `dev` flags."""
+    try:
+        with open(lockfile) as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return set()
+    entries = {}
+    for key, meta in (data.get("packages") or {}).items():
+        if "node_modules/" in key:
+            name = key.rsplit("node_modules/", 1)[1]
+            entries.setdefault(name, []).append(bool(meta.get("dev") or meta.get("devOptional")))
+    return {name for name, flags in entries.items() if flags and all(flags)}
+
+
+def is_dev_manifest(path):
+    name = os.path.basename(path or "").lower()
+    return any(w in name for w in ("dev", "test", "lint", "docs")) and name.endswith((".txt", ".in"))
+
+
 def parse(report, src):
+    """One finding per vulnerable package (per manifest): how many advisories, the worst severity, and the
+    version that fixes all of them. Dev-only packages are ranked one level lower."""
     with open(report) as fh:
         data = json.load(fh)
     kev, out = kev_ids(), []
     for r in data.get("results", []):
-        file = src.rel(r.get("source", {}).get("path"))
+        path = r.get("source", {}).get("path")
+        file = src.rel(path)
+        devs = dev_packages(path) if os.path.basename(path or "") == "package-lock.json" else set()
+        dev_manifest = is_dev_manifest(path)
         for p in r.get("packages", []):
             pkg = p["package"]
             vulns = {v["id"]: v for v in p.get("vulnerabilities", [])}
-            for g in p.get("groups", []):
+            advisories = []
+            # one group per distinct issue (aliases merged); without groups, one per advisory
+            groups = p.get("groups") or [{"ids": [v["id"]], "aliases": v.get("aliases", []), "max_severity": ""} for v in vulns.values()]
+            for g in groups:
                 ids, aliases = g.get("ids", []), g.get("aliases", [])
                 v = next((vulns[i] for i in ids if i in vulns), {})
                 cves = sorted(a for a in set(aliases) | set(ids) if a.startswith("CVE-"))
                 fixes = {e["fixed"] for a in v.get("affected", []) if a.get("package", {}).get("name") == pkg["name"]
                          for rg in a.get("ranges", []) for e in rg.get("events", []) if "fixed" in e}
                 above = sorted((f for f in fixes if _ver(f) > _ver(pkg["version"])), key=_ver)  # nearest fix above installed
-                fix = (above or sorted(fixes, key=_ver)[-1:] or [None])[0]
                 exploited = bool(kev & set(cves))
-                sev = "critical" if exploited else _severity(g.get("max_severity"), v.get("database_specific", {}).get("severity"))
-                label = cves[0] if cves else ids[0] if ids else "advisory"
                 summary = v.get("summary") or (v.get("details") or "").strip().split("\n")[0].split(". ")[0][:140] or "known vulnerability"
-                msg = f"{pkg['name']} {pkg['version']}: {summary} ({label})"
-                if exploited:
-                    msg += " - actively exploited (CISA KEV)"
-                if fix:
-                    msg += f". Fixed in {fix}."
-                out.append(findings.make("deps", "osv-scanner", label, sev, file, None, msg,
-                                         key=f"{pkg['ecosystem']}|{pkg['name']}|{ids[0] if ids else label}",
-                                         package=pkg["name"], version=pkg["version"], ecosystem=pkg["ecosystem"],
-                                         fixed=fix, kev=exploited or None,
-                                         url=f"https://osv.dev/vulnerability/{ids[0]}" if ids else None))
+                advisories.append({
+                    "id": cves[0] if cves else ids[0] if ids else "advisory", "summary": summary,
+                    "severity": "critical" if exploited else _severity(g.get("max_severity"), v.get("database_specific", {}).get("severity")),
+                    "fixed": (above or sorted(fixes, key=_ver)[-1:] or [None])[0], "kev": exploited,
+                    "url": f"https://osv.dev/vulnerability/{ids[0]}" if ids else None})
+            if not advisories:
+                continue
+            advisories.sort(key=lambda a: SEV_ORDER.index(a["severity"]))
+            worst = advisories[0]["severity"]
+            fixes = [a["fixed"] for a in advisories if a["fixed"]]
+            fix = max(fixes, key=_ver) if fixes else None  # one upgrade that clears every advisory
+            unfixed = sum(1 for a in advisories if not a["fixed"])
+            dev = pkg["name"] in devs or dev_manifest
+            sev = DOWNGRADE[worst] if dev and not any(a["kev"] for a in advisories) else worst
+            counts = {s: sum(a["severity"] == s for a in advisories) for s in SEV_ORDER}
+            breakdown = ", ".join(f"{n} {s}" for s, n in counts.items() if n)
+            n = len(advisories)
+            msg = f"{pkg['name']} {pkg['version']}: {n} known vulnerabilit{'y' if n == 1 else 'ies'} ({breakdown})."
+            if fix:
+                msg += f" Upgrade to {fix} to fix {'it' if n == 1 else 'them' if not unfixed else f'{n - unfixed} of them'}."
+            else:
+                msg += " No fixed version yet."
+            if any(a["kev"] for a in advisories):
+                msg += " Actively exploited (CISA KEV)."
+            if dev:
+                msg += " Dev dependency: only affects development and builds."
+            msg += " Worst: " + advisories[0]["summary"]
+            out.append(findings.make("deps", "osv-scanner", "vulnerable-dependency", sev, file, None, msg,
+                                     key=f"{pkg['ecosystem']}|{pkg['name']}|{file}",
+                                     package=pkg["name"], version=pkg["version"], ecosystem=pkg["ecosystem"],
+                                     fixed=fix, dev=dev or None, kev=any(a["kev"] for a in advisories) or None,
+                                     advisories=advisories, url=advisories[0]["url"]))
     return out

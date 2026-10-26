@@ -275,3 +275,39 @@ You may read files to check details; don't edit anything."""
     with open(path, "w") as fh:
         fh.write(text)
     return {"path": path, "text": text}
+
+
+# ── triage: one pass over every open finding
+
+def triage(target, db, on_line=None, proc_holder=None, limit=80):
+    """Ask Claude to label each open finding real / false-positive / unsure (with a reason) and store it."""
+    items = [f for f in db.findings() if f["status"] == "open"][:limit]
+    if not items:
+        return {"count": 0, "verdicts": {}}
+    listing = [{"id": f["id"], "check": f["stage"], "rule": f["rule"], "severity": f["severity"], "file": f["file"],
+                "line": f["line"], "message": f["message"][:300], "code": f["snippet"][:200]} for f in items]
+    prompt = f"""An automated bug scanner reported these findings in the project in the current directory.
+For each one decide whether it is a real problem worth fixing, a false positive, or unsure. Read the code
+where needed (don't edit anything). Be strict: "false-positive" only when you're confident it is harmless
+here (e.g. a hash used only for ids, test-only code, a pattern that can't be reached with bad input).
+
+{json.dumps(listing, indent=1)}
+
+Reply with ONLY a JSON array, one object per finding: {{"id": "...", "verdict": "real" | "false-positive" | "unsure", "reason": "one short sentence"}}"""
+    rc, text = run(prompt, target, READ_ONLY, on_line=on_line, proc_holder=proc_holder, timeout=1800)
+    m = re.search(r"\[.*\]", text, re.S)
+    try:
+        data = json.loads(m.group(0)) if m else []
+    except ValueError:
+        data = []
+    by_id = {f["id"]: f for f in items}
+    verdicts = {}
+    for d in data:
+        f = by_id.get(str(d.get("id", ""))[:8])
+        v = d.get("verdict")
+        if f and v in ("real", "false-positive", "unsure"):
+            db.set_triage(f["fp"], v, str(d.get("reason", ""))[:300])
+            verdicts[f["id"]] = v
+    if not verdicts:
+        return {"error": "Claude's reply couldn't be read as verdicts.", "raw": text[:2000]}
+    return {"count": len(verdicts), "verdicts": verdicts}

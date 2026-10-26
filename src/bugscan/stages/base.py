@@ -107,9 +107,20 @@ class Ctx:
         return rc, "".join(out)
 
     def stop(self):
+        """Ask the running command (and everything it started) to stop; force it 5 s later if it ignores that."""
         p = self.proc
         if p and p.poll() is None:
             try:
                 os.killpg(p.pid, signal.SIGTERM)
             except (ProcessLookupError, PermissionError):
-                pass
+                return
+
+            def force():
+                if p.poll() is None:
+                    try:
+                        os.killpg(p.pid, signal.SIGKILL)
+                    except (ProcessLookupError, PermissionError):
+                        pass
+            t = threading.Timer(5, force)
+            t.daemon = True
+            t.start()

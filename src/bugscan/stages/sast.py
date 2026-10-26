@@ -36,7 +36,7 @@ class Sast(Stage):
         rc, _ = ctx.run(cmd + ["--"] + targets)
         if not os.path.exists(report):
             return error(f"semgrep failed (exit {rc})")
-        return Result("ok", parse(report, ctx.src, local_rule_ids(configs)), complete=complete)
+        return Result("ok", parse(report, ctx.src, local_rule_ids(configs), configs), complete=complete)
 
 
 def rule_configs(ctx, log=print):
@@ -64,14 +64,25 @@ def local_rule_ids(configs):
     return ids
 
 
-def parse(report, src, local_ids=()):
+def clean_rule_id(check_id, configs=()):
+    """Semgrep prefixes ids of rules loaded from files with the file's folder ("Users.me..cache.bugscan.rules.");
+    strip that so ids read like the registry's ("python.lang.security…")."""
+    for c in configs:
+        if os.path.isabs(c):  # rule files (registry ids like "p/python" aren't prefixed)
+            prefix = os.path.dirname(c).strip("/").replace("/", ".") + "."
+            if check_id.startswith(prefix):
+                return check_id[len(prefix):]
+    return check_id
+
+
+def parse(report, src, local_ids=(), configs=()):
     with open(report) as fh:
         data = json.load(fh)
     out = []
     for r in data.get("results", []):
         file, line = src.rel(r["path"]), r["start"]["line"]
         ex = r.get("extra", {})
-        rule = r["check_id"]
+        rule = clean_rule_id(r["check_id"], configs)
         # semgrep prefixes ids from local rule files with the file's path: map back to the declared id
         rule = next((i for i in sorted(local_ids, key=len, reverse=True) if rule == i or rule.endswith("." + i)), rule)
         refs = ex.get("metadata", {}).get("references") or []

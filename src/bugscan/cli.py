@@ -3,7 +3,8 @@
   bugscan [FOLDER]                      interactive UI
   bugscan scan [-t FOLDER] [options]    scan from the command line or CI (see bugscan scan -h)
   bugscan findings [-t FOLDER]          list findings          bugscan show ID     one finding in full
-  bugscan explain ID / fix ID           ask Claude to explain / fix a finding (you confirm the change)
+  bugscan explain ID / fix ID           Claude explains / fixes a finding (dependency upgrades need no Claude)
+  bugscan triage                        Claude labels every open finding real / false positive / unsure
   bugscan ignore ID                     mark a finding as not a problem (again to undo)
   bugscan sync | report | doctor        update data · HTML report · check installed tools
   bugscan hook install|uninstall        quick scan before every git commit
@@ -35,7 +36,8 @@ def print_findings(items, titles, limit=None):
         state = color(STATE_COLOR[f["state"]], f"{f['state']:<9}")
         sev = color(SEV_COLOR.get(f["severity"], ""), f"{f['severity']:<8}")
         check = titles.get(f["stage"], f["stage"])[:16]
-        print(f"  {f['id']}  {state} {sev} {check:<16} {where(f)[:34]:<34} {f['message'].splitlines()[0][:100]}")
+        tag = {"false-positive": "[likely FP] ", "unsure": "[unsure] "}.get(f.get("triage") or "", "")
+        print(f"  {f['id']}  {state} {sev} {check:<16} {where(f)[:34]:<34} {tag}{f['message'].splitlines()[0][:100]}")
     if limit and len(items) > limit:
         print(f"  … and {len(items) - limit} more (bugscan findings)")
 
@@ -68,6 +70,9 @@ def cmd_scan(a):
     scan = Scan(p, level, a.stages.split(",") if a.stages else None, a.fuzz, a.staged, on_line=line, on_stage=stage)
     from .detect import describe
     print(f"Scanning {p.target}  ({describe(p.info)}) · {PROFILES[level]['title']}", flush=True)
+    for k in (a.stages.split(",") if a.stages else []):
+        if k not in scan.stages:
+            print(f"  {p.titles[k]:<18} not run    {p.availability(k)[1]}")
     res = scan.run()
     items = scan.db.findings()
     new = [f for f in items if f["state"] in ("new", "came back")]
@@ -150,15 +155,20 @@ def cmd_explain(a):
 
 
 def cmd_fix(a):
-    from . import claude
+    from . import claude, upgrade
     p, db, f = _get(a)
     if not f:
         return 2
-    if not claude.available():
+    if (a.claude or not upgrade.plan(f, p.target)) and not claude.available():
         print("Claude Code isn't installed (see bugscan doctor).", file=sys.stderr)
         return 2
-    print("Claude is fixing it…", file=sys.stderr)
-    r = claude.fix(f, p.target)
+    up = None if a.claude else upgrade.plan(f, p.target)
+    if up:
+        print(f"Upgrading: {up['describe']}", file=sys.stderr)
+        r = upgrade.apply(up, p.target, log=lambda s: print("  " + s, file=sys.stderr))
+    else:
+        print("Claude is fixing it…", file=sys.stderr)
+        r = claude.fix(f, p.target)
     if r.get("error"):
         print(r["error"], file=sys.stderr)
         return 2
@@ -168,8 +178,10 @@ def cmd_fix(a):
         return 0
     print("\n" + r["diff"])
     answer = "y" if a.yes else ""
-    if not a.yes:
-        try:  # no terminal or Ctrl-C: never leave an unconfirmed change behind
+    if not a.yes and not sys.stdin.isatty():
+        print("\nNo terminal to confirm in (use --yes to keep changes without asking).")
+    elif not a.yes:
+        try:  # Ctrl-C or end of input: never leave an unconfirmed change behind
             answer = input("Keep this change? [y/N] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print("\nNo answer (use --yes to keep changes without asking).")
@@ -178,10 +190,30 @@ def cmd_fix(a):
         print("Undone; your files are back as they were.")
         return 0
     from .engine import Scan
-    print(f"Kept. Re-running {p.titles[f['stage']]} to verify…")
-    Scan(p, "standard", [f["stage"]], 15 if f["stage"] == "fuzz" else None).run()
+    stages = [f["stage"]] + (["tests"] if f["stage"] == "deps" and p.availability("tests")[0] else [])
+    print(f"Kept. Re-running {', '.join(p.titles[k] for k in stages)} to verify…")
+    Scan(p, "standard", stages, 15 if f["stage"] == "fuzz" else None).run()
     g = db.get(f["fp"])
     print("Verified: no longer reported." if g and g["status"] == "fixed" else "The check still reports it; have a look.")
+    return 0
+
+
+def cmd_triage(a):
+    from . import claude
+    p = project(a)
+    if not claude.available():
+        print("Claude Code isn't installed (see bugscan doctor).", file=sys.stderr)
+        return 2
+    db = findings.DB(p.target)
+    print("Claude is triaging the open findings…", file=sys.stderr)
+    r = claude.triage(p.target, db)
+    if r.get("error"):
+        print(r["error"], file=sys.stderr)
+        return 1
+    for f in db.findings():
+        if f.get("triage"):
+            print(f"  {f['id']}  {f['triage']:<15} {where(f)[:34]:<34} {f.get('triage_reason') or ''}")
+    print(f"\n{r['count']} triaged. Ignore false positives with `bugscan ignore ID`, or press I in the UI.")
     return 0
 
 
@@ -273,8 +305,10 @@ def main(argv=None):
     f.add_argument("--json", action="store_true", help="print JSON")
     add("show", cmd_show, "show one finding", ident=True)
     add("explain", cmd_explain, "Claude explains a finding", ident=True)
-    x = add("fix", cmd_fix, "Claude fixes a finding (you confirm)", ident=True)
+    x = add("fix", cmd_fix, "fix a finding: upgrades dependencies directly, otherwise Claude (you confirm)", ident=True)
     x.add_argument("--yes", action="store_true", help="keep the change without asking")
+    x.add_argument("--claude", action="store_true", help="ask Claude even when a direct upgrade is possible")
+    add("triage", cmd_triage, "Claude labels every open finding real / false positive / unsure")
     add("ignore", cmd_ignore, "ignore / un-ignore a finding", ident=True)
     y = add("sync", cmd_sync, "update rules, vulnerability data and fuzz seeds")
     y.add_argument("--force", action="store_true")

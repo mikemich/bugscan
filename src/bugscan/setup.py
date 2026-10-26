@@ -11,6 +11,8 @@ TOOLS = [
     ("gitleaks", "secret scanning", ["gitleaks", "version"], ("brew install gitleaks", "see github.com/gitleaks/gitleaks/releases"), ["secrets"]),
     ("osv-scanner", "dependency vulnerabilities", ["osv-scanner", "--version"], ("brew install osv-scanner", "go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest"), ["deps"]),
     ("node", "JS lint and JS fuzz harnesses", ["node", "--version"], ("brew install node", "sudo apt install nodejs"), ["lint", "fuzz"]),
+    ("ruff", "Python linting (undefined names, real bugs)", ["ruff", "--version"], ("brew install ruff", "pipx install ruff"), ["types"]),
+    ("cargo", "Rust tests and clippy", ["cargo", "--version"], ("brew install rustup && rustup-init", "see rustup.rs"), ["tests", "types"]),
     ("swift", "Swift sanitizers and strict concurrency", ["swift", "--version"], ("xcode-select --install", "see swift.org/install"), ["memory"]),
     ("go", "Go race detector and vet", ["go", "version"], ("brew install go", "see go.dev/dl"), ["memory"]),
     ("claude", "explain, fix, write rules and fuzzers", ["claude", "--version"], ("npm install -g @anthropic-ai/claude-code", "npm install -g @anthropic-ai/claude-code"), []),
