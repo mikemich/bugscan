@@ -15,11 +15,11 @@ Pure Python standard library (3.9+), no dependencies. Works on macOS and Linux.
 ## Install
 
 ```bash
-pipx install git+https://github.com/mikemich/bugscan
-bugscan doctor          # shows which scanners are installed and how to get the missing ones
+brew install mikemich/tap/bugscan   # also installs semgrep, gitleaks and osv-scanner
+bugscan doctor                      # shows what's installed and how to get anything missing
 ```
 
-The core checks use [semgrep](https://semgrep.dev), [gitleaks](https://github.com/gitleaks/gitleaks) and [osv-scanner](https://github.com/google/osv-scanner) (`brew install semgrep gitleaks osv-scanner`). Node, Swift and Go are used when the project needs them. The Claude features use [Claude Code](https://claude.com/claude-code).
+Without Homebrew: `pipx install git+https://github.com/mikemich/bugscan`, plus [semgrep](https://semgrep.dev), [gitleaks](https://github.com/gitleaks/gitleaks) and [osv-scanner](https://github.com/google/osv-scanner) for the core checks. Node, Swift and Go are used when a project needs them. The Claude features use [Claude Code](https://claude.com/claude-code).
 
 ## Use
 
