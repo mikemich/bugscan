@@ -1,0 +1,13 @@
+# bugscan scanning itself.
+[scan]
+exclude = ["tests/fixtures"]   # planted bugs live there on purpose
+
+[[check]]
+name = "unit-tests"
+title = "Test suite"
+description = "python -m unittest (fast mode)"
+run = "BUGSCAN_TEST_FAST=1 BUGSCAN_CACHE=$BUGSCAN_OUT/cache python3 -m unittest discover -s tests -t . 2>&1"
+levels = ["standard", "deep"]
+requires = ["python3"]
+severity = "high"
+matchers = [{ regex = '^(?:FAIL|ERROR): (?P<message>\S+ \(\S+\))', rule = "test-failure" }]

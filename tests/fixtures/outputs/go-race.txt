@@ -1,0 +1,76 @@
+==================
+WARNING: DATA RACE
+Read at 0x00c00019c198 by goroutine 9:
+  example.com/race.(*Counter).Inc()
+      /PROJECT/go-race/counter.go:10 +0x6c
+  example.com/race.CountTo.func1()
+      /PROJECT/go-race/counter.go:18 +0x18
+
+Previous write at 0x00c00019c198 by goroutine 8:
+  example.com/race.(*Counter).Inc()
+      /PROJECT/go-race/counter.go:10 +0x7c
+  example.com/race.CountTo.func1()
+      /PROJECT/go-race/counter.go:18 +0x18
+
+Goroutine 9 (running) created at:
+  example.com/race.CountTo()
+      /PROJECT/go-race/counter.go:18 +0x70
+  example.com/race.TestCountTo()
+      /PROJECT/go-race/counter_test.go:6 +0x28
+  testing.tRunner()
+      /opt/homebrew/Cellar/go/1.26.3/libexec/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /opt/homebrew/Cellar/go/1.26.3/libexec/src/testing/testing.go:2101 +0x34
+
+Goroutine 8 (finished) created at:
+  example.com/race.CountTo()
+      /PROJECT/go-race/counter.go:18 +0x70
+  example.com/race.TestCountTo()
+      /PROJECT/go-race/counter_test.go:6 +0x28
+  testing.tRunner()
+      /opt/homebrew/Cellar/go/1.26.3/libexec/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /opt/homebrew/Cellar/go/1.26.3/libexec/src/testing/testing.go:2101 +0x34
+==================
+==================
+WARNING: DATA RACE
+Write at 0x00c00019c198 by goroutine 10:
+  example.com/race.(*Counter).Inc()
+      /PROJECT/go-race/counter.go:10 +0x7c
+  example.com/race.CountTo.func1()
+      /PROJECT/go-race/counter.go:18 +0x18
+
+Previous write at 0x00c00019c198 by goroutine 9:
+  example.com/race.(*Counter).Inc()
+      /PROJECT/go-race/counter.go:10 +0x7c
+  example.com/race.CountTo.func1()
+      /PROJECT/go-race/counter.go:18 +0x18
+
+Goroutine 10 (running) created at:
+  example.com/race.CountTo()
+      /PROJECT/go-race/counter.go:18 +0x70
+  example.com/race.TestCountTo()
+      /PROJECT/go-race/counter_test.go:6 +0x28
+  testing.tRunner()
+      /opt/homebrew/Cellar/go/1.26.3/libexec/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /opt/homebrew/Cellar/go/1.26.3/libexec/src/testing/testing.go:2101 +0x34
+
+Goroutine 9 (running) created at:
+  example.com/race.CountTo()
+      /PROJECT/go-race/counter.go:18 +0x70
+  example.com/race.TestCountTo()
+      /PROJECT/go-race/counter_test.go:6 +0x28
+  testing.tRunner()
+      /opt/homebrew/Cellar/go/1.26.3/libexec/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /opt/homebrew/Cellar/go/1.26.3/libexec/src/testing/testing.go:2101 +0x34
+==================
+--- FAIL: TestCountTo (0.00s)
+    counter_test.go:7: lost updates: 49
+    testing.go:1712: race detected during execution of test
+--- FAIL: TestLabel (0.00s)
+    counter_test.go:13: Label(2) = "2 items %!s(MISSING)", want "2 items"
+FAIL
+FAIL	example.com/race	0.240s
+FAIL

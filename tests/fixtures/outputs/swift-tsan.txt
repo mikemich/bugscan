@@ -1,0 +1,156 @@
+[0/1] Planning build
+Building for debugging...
+[0/3] Write swift-version--58304C5D6DBC2206.txt
+[2/5] Compiling Counter Counter.swift
+[3/5] Emitting module Counter
+[4/7] Compiling CounterTests CounterTests.swift
+[5/7] Emitting module CounterTests
+[6/9] Compiling CounterPackageTests runner.swift
+[7/9] Emitting module CounterPackageTests
+[7/9] Write Objects.LinkFileList
+[8/9] Linking CounterPackageTests
+Build complete! (0.65s)
+Test Suite 'All tests' started at 2026-10-26 15:00:10.201.
+Test Suite 'CounterPackageTests.xctest' started at 2026-10-26 15:00:10.226.
+Test Suite 'CounterTests' started at 2026-10-26 15:00:10.226.
+Test Case '-[CounterTests.CounterTests testConcurrentCount]' started.
+==================
+WARNING: ThreadSanitizer: Swift access race (pid=22440)
+  Modifying access of Swift variable at 0x0001148302f0 by thread T2:
+    #0 Counter.increment() Counter.swift (CounterPackageTests:arm64+0x1734)
+    #1 closure #1 in countConcurrently(_:) Counter.swift:12 (CounterPackageTests:arm64+0x1a80)
+    #2 partial apply for closure #1 in countConcurrently(_:) /<compiler-generated> (CounterPackageTests:arm64+0x1ad8)
+    #3 partial apply for thunk for @callee_guaranteed (@unowned Int) -> () <null> (libswiftDispatch.dylib:arm64e+0x4e80)
+    #4 _dispatch_client_callout2 <null> (libdispatch.dylib:arm64e+0x1b4c4)
+
+  Previous write of size 1 at 0x0001148302f0 by thread T1:
+    #0 Counter.increment() Counter.swift:6 (CounterPackageTests:arm64+0x1760)
+    #1 closure #1 in countConcurrently(_:) Counter.swift:12 (CounterPackageTests:arm64+0x1a80)
+    #2 partial apply for closure #1 in countConcurrently(_:) /<compiler-generated> (CounterPackageTests:arm64+0x1ad8)
+    #3 partial apply for thunk for @callee_guaranteed (@unowned Int) -> () <null> (libswiftDispatch.dylib:arm64e+0x4e80)
+    #4 _dispatch_client_callout2 <null> (libdispatch.dylib:arm64e+0x1b4c4)
+
+  Location is heap block of size 24 at 0x0001148302e0 allocated by main thread:
+    #0 malloc <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x67720)
+    #1 _malloc_type_malloc_outlined <null> (libsystem_malloc.dylib:arm64e+0x1e6a4)
+    #2 countConcurrently(_:) Counter.swift:11 (CounterPackageTests:arm64+0x189c)
+    #3 CounterTests.testConcurrentCount() CounterTests.swift:6 (CounterPackageTests:arm64+0x2f40)
+    #4 @objc CounterTests.testConcurrentCount() /<compiler-generated> (CounterPackageTests:arm64+0x2fb0)
+    #5 __invoking___ <null> (CoreFoundation:arm64e+0x5e660)
+
+  Thread T2 (tid=15893750, running) is a GCD worker thread
+
+  Thread T1 (tid=15893749, running) is a GCD worker thread
+
+SUMMARY: ThreadSanitizer: Swift access race Counter.swift in Counter.increment()
+==================
+==================
+WARNING: ThreadSanitizer: Swift access race (pid=22440)
+  Modifying access of Swift variable at 0x0001148302f0 by main thread:
+    #0 Counter.increment() Counter.swift (CounterPackageTests:arm64+0x1734)
+    #1 closure #1 in countConcurrently(_:) Counter.swift:12 (CounterPackageTests:arm64+0x1a80)
+    #2 partial apply for closure #1 in countConcurrently(_:) /<compiler-generated> (CounterPackageTests:arm64+0x1ad8)
+    #3 partial apply for thunk for @callee_guaranteed (@unowned Int) -> () <null> (libswiftDispatch.dylib:arm64e+0x4e80)
+    #4 _dispatch_client_callout2 <null> (libdispatch.dylib:arm64e+0x1b4c4)
+    #5 _swift_dispatch_apply_current <null> (libswiftDispatch.dylib:arm64e+0x4f38)
+    #6 CounterTests.testConcurrentCount() CounterTests.swift:6 (CounterPackageTests:arm64+0x2f40)
+    #7 @objc CounterTests.testConcurrentCount() /<compiler-generated> (CounterPackageTests:arm64+0x2fb0)
+    #8 __invoking___ <null> (CoreFoundation:arm64e+0x5e660)
+
+  Previous write of size 1 at 0x0001148302f0 by thread T1:
+    #0 Counter.increment() Counter.swift:6 (CounterPackageTests:arm64+0x1760)
+    #1 closure #1 in countConcurrently(_:) Counter.swift:12 (CounterPackageTests:arm64+0x1a80)
+    #2 partial apply for closure #1 in countConcurrently(_:) /<compiler-generated> (CounterPackageTests:arm64+0x1ad8)
+    #3 partial apply for thunk for @callee_guaranteed (@unowned Int) -> () <null> (libswiftDispatch.dylib:arm64e+0x4e80)
+    #4 _dispatch_client_callout2 <null> (libdispatch.dylib:arm64e+0x1b4c4)
+
+  Location is heap block of size 24 at 0x0001148302e0 allocated by main thread:
+    #0 malloc <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x67720)
+    #1 _malloc_type_malloc_outlined <null> (libsystem_malloc.dylib:arm64e+0x1e6a4)
+    #2 countConcurrently(_:) Counter.swift:11 (CounterPackageTests:arm64+0x189c)
+    #3 CounterTests.testConcurrentCount() CounterTests.swift:6 (CounterPackageTests:arm64+0x2f40)
+    #4 @objc CounterTests.testConcurrentCount() /<compiler-generated> (CounterPackageTests:arm64+0x2fb0)
+    #5 __invoking___ <null> (CoreFoundation:arm64e+0x5e660)
+
+  Thread T1 (tid=15893749, running) is a GCD worker thread
+
+SUMMARY: ThreadSanitizer: Swift access race Counter.swift in Counter.increment()
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=22440)
+  Write of size 8 at 0x0001148302f0 by thread T2:
+    #0 Counter.increment() Counter.swift:6 (CounterPackageTests:arm64+0x1760)
+    #1 closure #1 in countConcurrently(_:) Counter.swift:12 (CounterPackageTests:arm64+0x1a80)
+    #2 partial apply for closure #1 in countConcurrently(_:) /<compiler-generated> (CounterPackageTests:arm64+0x1ad8)
+    #3 partial apply for thunk for @callee_guaranteed (@unowned Int) -> () <null> (libswiftDispatch.dylib:arm64e+0x4e80)
+    #4 _dispatch_client_callout2 <null> (libdispatch.dylib:arm64e+0x1b4c4)
+
+  Previous write of size 1 at 0x0001148302f0 by thread T1:
+    #0 Counter.increment() Counter.swift:6 (CounterPackageTests:arm64+0x1760)
+    #1 closure #1 in countConcurrently(_:) Counter.swift:12 (CounterPackageTests:arm64+0x1a80)
+    #2 partial apply for closure #1 in countConcurrently(_:) /<compiler-generated> (CounterPackageTests:arm64+0x1ad8)
+    #3 partial apply for thunk for @callee_guaranteed (@unowned Int) -> () <null> (libswiftDispatch.dylib:arm64e+0x4e80)
+    #4 _dispatch_client_callout2 <null> (libdispatch.dylib:arm64e+0x1b4c4)
+
+  Location is heap block of size 24 at 0x0001148302e0 allocated by main thread:
+    #0 malloc <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x67720)
+    #1 _malloc_type_malloc_outlined <null> (libsystem_malloc.dylib:arm64e+0x1e6a4)
+    #2 countConcurrently(_:) Counter.swift:11 (CounterPackageTests:arm64+0x189c)
+    #3 CounterTests.testConcurrentCount() CounterTests.swift:6 (CounterPackageTests:arm64+0x2f40)
+    #4 @objc CounterTests.testConcurrentCount() /<compiler-generated> (CounterPackageTests:arm64+0x2fb0)
+    #5 __invoking___ <null> (CoreFoundation:arm64e+0x5e660)
+
+  Thread T2 (tid=15893750, running) is a GCD worker thread
+
+  Thread T1 (tid=15893749, running) is a GCD worker thread
+
+SUMMARY: ThreadSanitizer: data race Counter.swift:6 in Counter.increment()
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=22440)
+  Write of size 8 at 0x0001148302f0 by main thread:
+    #0 Counter.increment() Counter.swift:6 (CounterPackageTests:arm64+0x1760)
+    #1 closure #1 in countConcurrently(_:) Counter.swift:12 (CounterPackageTests:arm64+0x1a80)
+    #2 partial apply for closure #1 in countConcurrently(_:) /<compiler-generated> (CounterPackageTests:arm64+0x1ad8)
+    #3 partial apply for thunk for @callee_guaranteed (@unowned Int) -> () <null> (libswiftDispatch.dylib:arm64e+0x4e80)
+    #4 _dispatch_client_callout2 <null> (libdispatch.dylib:arm64e+0x1b4c4)
+    #5 _swift_dispatch_apply_current <null> (libswiftDispatch.dylib:arm64e+0x4f38)
+    #6 CounterTests.testConcurrentCount() CounterTests.swift:6 (CounterPackageTests:arm64+0x2f40)
+    #7 @objc CounterTests.testConcurrentCount() /<compiler-generated> (CounterPackageTests:arm64+0x2fb0)
+    #8 __invoking___ <null> (CoreFoundation:arm64e+0x5e660)
+
+  Previous write of size 8 at 0x0001148302f0 by thread T3:
+    #0 Counter.increment() Counter.swift:6 (CounterPackageTests:arm64+0x1760)
+    #1 closure #1 in countConcurrently(_:) Counter.swift:12 (CounterPackageTests:arm64+0x1a80)
+    #2 partial apply for closure #1 in countConcurrently(_:) /<compiler-generated> (CounterPackageTests:arm64+0x1ad8)
+    #3 partial apply for thunk for @callee_guaranteed (@unowned Int) -> () <null> (libswiftDispatch.dylib:arm64e+0x4e80)
+    #4 _dispatch_client_callout2 <null> (libdispatch.dylib:arm64e+0x1b4c4)
+
+  Location is heap block of size 24 at 0x0001148302e0 allocated by main thread:
+    #0 malloc <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x67720)
+    #1 _malloc_type_malloc_outlined <null> (libsystem_malloc.dylib:arm64e+0x1e6a4error: Process '/Applications/Xcode.app/Contents/Developer/usr/bin/xctest /PROJECT/swift-race/.build/arm64-apple-macosx/debug/CounterPackageTests.xctest' exited with unexpected signal code 6
+)
+    #2 countConcurrently(_:) Counter.swift:11 (CounterPackageTests:arm64+0x189c)
+    #3 CounterTests.testConcurrentCount() CounterTests.swift:6 (CounterPackageTests:arm64+0x2f40)
+    #4 @objc CounterTests.testConcurrentCount() /<compiler-generated> (CounterPackageTests:arm64+0x2fb0)
+    #5 __invoking___ <null> (CoreFoundation:arm64e+0x5e660)
+
+  Thread T3 (tid=15893827, running) is a GCD worker thread
+
+SUMMARY: ThreadSanitizer: data race Counter.swift:6 in Counter.increment()
+==================
+Test Case '-[CounterTests.CounterTests testConcurrentCount]' passed (0.080 seconds).
+Test Case '-[CounterTests.CounterTests testTotal]' started.
+/PROJECT/swift-race/Tests/CounterTests/CounterTests.swift:11: error: -[CounterTests.CounterTests testTotal] : XCTAssertEqual failed: ("2") is not equal to ("3") - total should be 3
+Test Case '-[CounterTests.CounterTests testTotal]' failed (0.029 seconds).
+Test Suite 'CounterTests' failed at 2026-10-26 15:00:10.349.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.110 (0.123) seconds
+Test Suite 'CounterPackageTests.xctest' failed at 2026-10-26 15:00:10.349.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.110 (0.123) seconds
+Test Suite 'All tests' failed at 2026-10-26 15:00:10.349.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.110 (0.147) seconds
+ThreadSanitizer: reported 4 warnings
+◇ Test run started.
+↳ Testing Library Version: 1743
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

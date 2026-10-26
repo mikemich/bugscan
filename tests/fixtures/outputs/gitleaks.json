@@ -1,0 +1,6 @@
+[
+ {"Description": "GitHub Personal Access Token", "StartLine": 2, "File": "/PROJECT/config.py", "Secret": "REDACTED", "Match": "REDACTED",
+  "Commit": "0123456789abcdef0123456789abcdef01234567", "RuleID": "github-pat", "Fingerprint": "0123456789abcdef:config.py:github-pat:2"},
+ {"Description": "Generic API Key", "StartLine": 1, "File": "/PROJECT/node_modules/pkg/key.js", "RuleID": "generic-api-key", "Fingerprint": "x:nm"},
+ {"Description": "AWS key", "StartLine": 4, "File": "/PROJECT/vendor/x.txt", "RuleID": "aws", "Fingerprint": "x:vendor"}
+]

@@ -1,0 +1,9 @@
+{"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "eslint", "rules": [
+   {"id": "no-unused-vars", "shortDescription": {"text": "Unused variable"}, "helpUri": "https://eslint.org/no-unused-vars", "defaultConfiguration": {"level": "warning"}}]}},
+ "results": [
+   {"ruleId": "no-unused-vars", "message": {"text": "'x' is assigned but never used."},
+    "locations": [{"physicalLocation": {"artifactLocation": {"uri": "file:///PROJECT/src/a.js"}, "region": {"startLine": 7}}}]},
+   {"ruleId": "custom", "level": "error", "message": {"text": "Boom"}, "properties": {"severity": "critical"},
+    "locations": [{"physicalLocation": {"artifactLocation": {"uri": "src/b.js"}, "region": {"startLine": 2}}}]},
+   {"ruleId": "note-only", "level": "note", "message": {"text": "fyi"}}
+ ]}]}

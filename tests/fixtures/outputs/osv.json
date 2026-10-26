@@ -1,0 +1,13 @@
+{"results": [{"source": {"path": "/PROJECT/package-lock.json", "type": "lockfile"}, "packages": [
+ {"package": {"name": "lodash", "version": "4.17.15", "ecosystem": "npm"},
+  "vulnerabilities": [
+   {"id": "GHSA-35jh-r3h4-6jhm", "summary": "Command Injection in lodash", "aliases": ["CVE-2021-23337"],
+    "affected": [{"package": {"name": "lodash", "ecosystem": "npm"}, "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "4.17.21"}]}]}],
+    "database_specific": {"severity": "HIGH"}},
+   {"id": "GHSA-p6mc-m468-83gw", "summary": "", "details": "Prototype pollution in zipObjectDeep. More text here.", "aliases": ["CVE-2020-8203"],
+    "affected": [{"package": {"name": "lodash", "ecosystem": "npm"}, "ranges": [{"type": "SEMVER", "events": [{"introduced": "3.7.0"}, {"fixed": "4.17.19"}]}]},
+                 {"package": {"name": "lodash", "ecosystem": "npm"}, "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "3.0.1"}]}]}]}
+  ],
+  "groups": [{"ids": ["GHSA-35jh-r3h4-6jhm"], "aliases": ["CVE-2021-23337", "GHSA-35jh-r3h4-6jhm"], "max_severity": "7.2"},
+             {"ids": ["GHSA-p6mc-m468-83gw"], "aliases": ["CVE-2020-8203"], "max_severity": ""}]}
+]}]}

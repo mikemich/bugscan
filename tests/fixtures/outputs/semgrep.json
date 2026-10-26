@@ -1,0 +1,8 @@
+{"results": [
+ {"check_id": "src.bugscan.data.bugscan.js-innerhtml-template", "path": "/PROJECT/web/app.js", "start": {"line": 3, "col": 1}, "end": {"line": 3, "col": 40},
+  "extra": {"message": "innerHTML built from a template literal.", "severity": "WARNING", "metadata": {}}},
+ {"check_id": "javascript.lang.security.detect-eval-with-expression.detect-eval-with-expression", "path": "/PROJECT/web/app.js", "start": {"line": 5, "col": 1}, "end": {"line": 5, "col": 9},
+  "extra": {"message": "Detected eval with user input.", "severity": "ERROR", "metadata": {"references": ["https://owasp.org/x"]}}},
+ {"check_id": "x.info-rule", "path": "/PROJECT/web/app.js", "start": {"line": 1, "col": 1}, "end": {"line": 1, "col": 2},
+  "extra": {"message": "fyi", "severity": "INFO"}}
+], "errors": []}

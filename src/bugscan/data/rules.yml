@@ -1,0 +1,45 @@
+# Built-in Semgrep rules bugscan adds to every scan (beyond the registry packs for your languages).
+rules:
+  - id: bugscan.js-innerhtml-template
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      innerHTML built from a template literal. Safe only while every interpolated value is a number or
+      a fixed string; text from an API or the user here is an XSS sink. Prefer textContent or DOM nodes.
+    pattern-either:
+      - pattern: $EL.innerHTML = `...`
+      - pattern: $EL.innerHTML = $X.map(...).join(...)
+
+  - id: bugscan.js-json-without-ok-check
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Response body parsed without checking res.ok; error pages and rate-limit responses flow into code expecting data.
+    pattern: (await fetch(...)).json()
+
+  - id: bugscan.swift-try-bang
+    languages: [swift]
+    severity: WARNING
+    message: try! crashes the app on any thrown error. Handle the error, or document why it cannot throw.
+    pattern-regex: '\btry!'
+
+  - id: bugscan.swift-index-by-sibling-array
+    languages: [swift]
+    severity: ERROR
+    message: >-
+      Indexing one array with an index from another (enumerated) array. If the arrays can differ in length
+      (e.g. decoded API data), this traps with "Index out of range". Bounds-check or zip the arrays.
+    patterns:
+      - pattern-inside: $A.enumerated().compactMap { $I, $T in ... }
+      - pattern: $B[$I]
+      - metavariable-comparison:
+          comparison: str($A) != str($B)
+
+  - id: bugscan.python-bare-except-pass
+    languages: [python]
+    severity: WARNING
+    message: A bare `except:` that silently passes hides every error, including KeyboardInterrupt and real bugs. Catch specific exceptions.
+    pattern: |
+      try:
+        ...
+      except:
+        pass

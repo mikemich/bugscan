@@ -1,0 +1,32 @@
+# bugscan settings for this project. Everything here is optional; delete what you don't need.
+# Docs: https://github.com/ (see the bugscan README)
+
+[scan]
+# level = "standard"        # default scan level: quick | standard | deep
+# exclude = ["vendor"]      # folders to skip in every check
+# fail_on = "new"           # what makes `bugscan scan` fail: new | any | none
+# min_severity = "medium"   # ignore findings below this when deciding failure
+# fuzz_seconds = 60         # fuzzing time, overriding the level's default
+
+# Your own checks: any command. Findings come from a SARIF file written to $BUGSCAN_SARIF,
+# from regex matchers over the output, or (if neither) one finding when the command fails.
+# Available to the command: $BUGSCAN_TARGET, $BUGSCAN_OUT, $BUGSCAN_SARIF, $BUGSCAN_LEVEL,
+# $BUGSCAN_FUZZ_SECONDS, $BUGSCAN_SEEDS, and $BUGSCAN_CHANGED (changed files, quick level).
+# Exit with code 77 to skip the check (e.g. a service it needs isn't running).
+#
+# [[check]]
+# name = "unit-tests"
+# title = "Unit tests"
+# run = "npm test"
+# levels = ["standard", "deep"]
+# requires = ["npm"]
+# severity = "medium"
+# matchers = [
+#   { regex = '^(?P<file>\S+):(?P<line>\d+): (?P<message>.*)$', severity = "medium" },
+# ]
+
+# Real inputs to download with `bugscan sync` and use as extra fuzz seeds.
+#
+# [[seed]]
+# name = "sample-response"
+# url = "https://api.example.com/sample.json"

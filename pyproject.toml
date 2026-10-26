@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bugscan"
+version = "0.1.0"
+description = "Find bugs in any folder, mostly automatically: secrets, static analysis, vulnerable dependencies, fuzzing and sanitizers, with Claude to explain and fix what it finds."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+dependencies = []
+classifiers = [
+    "Environment :: Console :: Curses",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
+
+[project.scripts]
+bugscan = "bugscan.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+bugscan = ["data/*"]

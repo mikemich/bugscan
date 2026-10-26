@@ -1,0 +1,1 @@
+counter.go:25:31: fmt.Sprintf format %s reads arg #2, but call has 1 arg

@@ -1,0 +1,46 @@
+[0/1] Planning build
+Building for debugging...
+[0/1] Write swift-version--58304C5D6DBC2206.txt
+[2/3] Emitting module Counter
+/PROJECT/swift-race/Sources/Counter/Counter.swift:16:12: warning: var 'sharedTotal' is not concurrency-safe because it is nonisolated global shared mutable state; this is an error in the Swift 6 language mode [#MutableGlobalVariable]
+14 | }
+15 | 
+16 | public var sharedTotal = 0   // global mutable state: flagged under strict concurrency
+   |            |- warning: var 'sharedTotal' is not concurrency-safe because it is nonisolated global shared mutable state; this is an error in the Swift 6 language mode [#MutableGlobalVariable]
+   |            |- note: convert 'sharedTotal' to a 'let' constant to make 'Sendable' shared state immutable
+   |            |- note: add '@MainActor' to make var 'sharedTotal' part of global actor 'MainActor'
+   |            `- note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+17 | 
+18 | public func addToTotal(_ x: Int) { sharedTotal += x }
+
+[#MutableGlobalVariable]: <https://docs.swift.org/compiler/documentation/diagnostics/mutable-global-variable>
+[3/3] Compiling Counter Counter.swift
+/PROJECT/swift-race/Sources/Counter/Counter.swift:16:12: warning: var 'sharedTotal' is not concurrency-safe because it is nonisolated global shared mutable state; this is an error in the Swift 6 language mode [#MutableGlobalVariable]
+14 | }
+15 | 
+16 | public var sharedTotal = 0   // global mutable state: flagged under strict concurrency
+   |            |- warning: var 'sharedTotal' is not concurrency-safe because it is nonisolated global shared mutable state; this is an error in the Swift 6 language mode [#MutableGlobalVariable]
+   |            |- note: convert 'sharedTotal' to a 'let' constant to make 'Sendable' shared state immutable
+   |            |- note: add '@MainActor' to make var 'sharedTotal' part of global actor 'MainActor'
+   |            `- note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+17 | 
+18 | public func addToTotal(_ x: Int) { sharedTotal += x }
+
+/PROJECT/swift-race/Sources/Counter/Counter.swift:12:59: warning: capture of 'c' with non-Sendable type 'Counter' in a '@Sendable' closure [#SendableClosureCaptures]
+ 1 | import Foundation
+ 2 | 
+ 3 | public final class Counter {
+   |                    `- note: class 'Counter' does not conform to the 'Sendable' protocol
+ 4 |     public var value = 0
+ 5 |     public init() {}
+   :
+10 | public func countConcurrently(_ n: Int) -> Int {
+11 |     let c = Counter()
+12 |     DispatchQueue.concurrentPerform(iterations: n) { _ in c.increment() }
+   |                                                           `- warning: capture of 'c' with non-Sendable type 'Counter' in a '@Sendable' closure [#SendableClosureCaptures]
+13 |     return c.value
+14 | }
+
+[#MutableGlobalVariable]: <https://docs.swift.org/compiler/documentation/diagnostics/mutable-global-variable>
+[#SendableClosureCaptures]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-closure-captures>
+Build complete! (0.21s)
