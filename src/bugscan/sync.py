@@ -101,8 +101,9 @@ def osv_databases(target, log=print):
     if not shutil.which("osv-scanner"):
         log("  osv    osv-scanner not installed, skipped")
         return
+    from .stages.deps import exclude_flag
     r = subprocess.run(["osv-scanner", "scan", "source", "-r", target, "--offline-vulnerabilities", "--download-offline-databases",
-                        "--x-exclude", "node_modules", "--format", "json", "--verbosity", "error"],
+                        exclude_flag(), "node_modules", "--format", "json", "--verbosity", "error"],
                        capture_output=True, text=True, timeout=1800)
     if r.returncode == 128:
         log("  osv    no lockfiles here, nothing to download")

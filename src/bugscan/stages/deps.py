@@ -1,9 +1,21 @@
+import functools
 import json
 import os
 import re
+import subprocess
 
 from .. import findings, paths
 from .base import Result, Stage, error, skip
+
+
+@functools.lru_cache(maxsize=1)
+def exclude_flag():
+    """osv-scanner renamed --experimental-exclude to --x-exclude (2.6); use whichever this version has."""
+    try:
+        help_text = subprocess.run(["osv-scanner", "scan", "source", "--help"], capture_output=True, text=True, timeout=30)
+        return "--x-exclude" if "--x-exclude" in (help_text.stdout + help_text.stderr) else "--experimental-exclude"
+    except (OSError, subprocess.TimeoutExpired):
+        return "--x-exclude"
 
 
 class Deps(Stage):
@@ -21,9 +33,9 @@ class Deps(Stage):
         if os.path.exists(report):
             os.remove(report)
         cmd = ["osv-scanner", "scan", "source", "-r", ctx.target, "--format", "json", "--output-file", report,
-               "--verbosity", "error", "--x-exclude", "node_modules"]
+               "--verbosity", "error", exclude_flag(), "node_modules"]
         for e in ctx.exclude:
-            cmd += ["--x-exclude", e]
+            cmd += [exclude_flag(), e]
         offline = os.environ.get("BUGSCAN_OFFLINE") == "1"
         rc, _ = ctx.run(cmd + (["--offline-vulnerabilities"] if offline else []))
         if rc not in (0, 1, 128) and not offline:

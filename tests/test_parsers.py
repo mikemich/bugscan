@@ -98,6 +98,19 @@ class ToolParserTests(unittest.TestCase):
         finally:
             p.cleanup()
 
+    def test_exclude_flag_matches_installed_osv_scanner(self):
+        import subprocess
+        from unittest import mock
+        deps.exclude_flag.cache_clear()
+        old = subprocess.CompletedProcess([], 0, "   --experimental-exclude string   exclude paths", "")
+        with mock.patch.object(deps.subprocess, "run", return_value=old):
+            self.assertEqual(deps.exclude_flag(), "--experimental-exclude")   # osv-scanner 2.5
+        deps.exclude_flag.cache_clear()
+        new = subprocess.CompletedProcess([], 0, "   --x-exclude string   exclude paths", "")
+        with mock.patch.object(deps.subprocess, "run", return_value=new):
+            self.assertEqual(deps.exclude_flag(), "--x-exclude")               # 2.6+
+        deps.exclude_flag.cache_clear()
+
     def test_version_ordering(self):
         self.assertLess(deps._ver("1.11.28"), deps._ver("2.2.10"))
         self.assertLess(deps._ver("4.17.9"), deps._ver("4.17.15"))

@@ -25,7 +25,7 @@ Faster:
 Also:
 - `scan.skip` in the config turns off built-in checks; Python projects without pytest run their tests with unittest.
 - Fixed on Linux: XCTest failures from swift-corelibs-xctest are recognized.
-- Dependency results no longer depend on osv-scanner grouping advisories.
+- Dependency results no longer depend on osv-scanner grouping advisories, and work with osv-scanner 2.5 (older exclude flag).
 
 ## 0.1.0
 
